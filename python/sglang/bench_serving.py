@@ -1227,9 +1227,14 @@ async def benchmark(
     else:
         raise ValueError(f"Unknown backend: {backend}")
 
+    def _get_prompt_obj(request: Any):
+        # Mooncake trace currently yields raw dict records first, and later
+        # converts them into DatasetRow objects in the async generator.
+        return request.prompt if hasattr(request, "prompt") else None
+
     # Multi-turn iff prompt[0] is a valid per-round payload. Single-shot
     # OpenAI messages (List[Dict]) is excluded since its first element is a dict.
-    first_prompt = input_requests[0].prompt
+    first_prompt = _get_prompt_obj(input_requests[0]) if input_requests else None
     is_multi_turn = (
         isinstance(first_prompt, list)
         and bool(first_prompt)
@@ -1460,8 +1465,11 @@ async def benchmark(
 
     # Compute metrics and print results
     benchmark_duration = time.perf_counter() - benchmark_start_time
+    metrics_input_requests = (
+        None if is_multi_turn or args.dataset_name == "mooncake" else input_requests
+    )
     metrics, output_lens = calculate_metrics(
-        input_requests=None if is_multi_turn else input_requests,
+        input_requests=metrics_input_requests,
         outputs=outputs,
         dur_s=benchmark_duration,
         tokenizer=tokenizer,
